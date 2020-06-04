@@ -376,7 +376,6 @@ function Configurator({ name, value, onChange }) {
   );
 
   const onValidate = useCallback(({ values, errors }) => {
-    console.log("validate", values);
     const x = {};
     if (!values.firstName) x.firstName = "First name is missing.";
     if (!values.lastName) x.lastName = "Last name is missing.";
@@ -479,7 +478,7 @@ function Form() {
           type="submit"
           disabled={hasErrors || isValidating || isSubmitting}
         >
-          submit
+          {isValidating ? "validating" : isSubmitting ? "submitting" : "submit"}
         </button>
       </form>
     </>
