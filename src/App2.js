@@ -71,6 +71,11 @@ const reducer = (state, action) => {
         errors: action.errors,
         isValidating: false,
       };
+    case "SET_ERROR":
+      return {
+        ...state,
+        errors: { ...state.errors, [action.name]: action.error },
+      };
     case "SET_IS_SUBMITTING":
       return {
         ...state,
@@ -142,6 +147,11 @@ export function useForm({
     dispatch({ type: "SET_VALUE", name, value });
   }, []);
 
+  const setFieldError = useCallback((name, error) => {
+    if (!isFieldRegistered(name)) return;
+    dispatch({ type: "SET_ERROR", name, error });
+  }, []);
+
   const handleChange = useCallback(({ name, value, error }) => {
     dispatch({ type: "SET_VALUE", name, value, error });
   }, []);
@@ -177,6 +187,7 @@ export function useForm({
           return errors;
         },
         setFieldValue,
+        setFieldError,
         setErrors: (errors) => dispatch({ type: "SET_ERRORS_ONLY", errors }),
         reset,
       };
@@ -190,6 +201,7 @@ export function useForm({
       state.lastEditedField,
       reset,
       setFieldValue,
+      setFieldError,
     ]
   );
 
@@ -259,6 +271,7 @@ export function useForm({
     touched: touched.current,
     lastEditedField: state.lastEditedField,
     setFieldValue,
+    setFieldError,
     handleChange,
     handleBlur,
     handleSubmit,
