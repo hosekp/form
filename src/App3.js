@@ -8,6 +8,9 @@ import React, {
   memo,
   ErrorBoundary,
   Suspense,
+  createContext,
+  useContext,
+  Fragment,
 } from "react";
 import useSafeEffect from "use-safe-effect-hook";
 import {
@@ -46,7 +49,7 @@ export const $field = atomFamily({
       touched: false,
       required: false, // TODO
       validation: validationResult,
-      validator: () => validationResult,
+      validator: (value, touched) => validationResult,
     };
   },
 });
@@ -82,11 +85,13 @@ export const $values = selectorFamily({
 });
 
 export function Validation({ name, formId }) {
+  formId = useContext(FormContext) || formId;
   const [, error] = useRecoilValue($fieldValidation(`${formId}_${name}`));
   return error ? <span style={{ color: "red" }}>{error}</span> : null;
 }
 
-function FormValidation({ formId }) {
+export function FormValidation({ formId }) {
+  formId = useContext(FormContext) || formId;
   const validationPairs = useRecoilValue($formValidation(formId));
   return (
     <div>
@@ -97,19 +102,32 @@ function FormValidation({ formId }) {
   );
 }
 
-export function useForm({ name, onSubmit, onValidate }) {
+const FormContext = createContext();
+
+export function FormIdProvider({ children }) {
+  const [formId] = useState(() => `form/${Math.random()}`);
+  return <FormContext.Provider value={formId}>{children}</FormContext.Provider>;
+}
+
+export function useForm({ name, onSubmit, defaultValues = {} }) {
+  name = useContext(FormContext) || name;
+
   const [{ isSubmitting }, setForm] = useRecoilState($form(name));
   const fields = useRecoilValue($fields(name));
 
-  const setValues = useRecoilCallback(({ set }, values, validate) => {
-    Object.keys(values).forEach((id) =>
-      set($field(`${name}_${id}`), (state) => ({
-        ...state,
-        value: values[id],
-        validation: validate ? state.validator(values[id]) : state.validation,
-      }))
-    );
-  }, []);
+  const setValues = useRecoilCallback(
+    ({ set }, values, validate) => {
+      console.log("setValues", values);
+      Object.keys(values).forEach((id) =>
+        set($field(`${name}_${id}`), (state) => ({
+          ...state,
+          value: values[id],
+          validation: validate ? state.validator(values[id]) : state.validation,
+        }))
+      );
+    },
+    [name]
+  );
 
   const setErrors = useRecoilCallback(
     ({ set }, errors) => {
@@ -129,6 +147,8 @@ export function useForm({ name, onSubmit, onValidate }) {
 
       const fields = await getPromise($fields(name));
       const validationPairs = await getPromise($formValidation(name));
+
+      console.log(fields);
 
       await onSubmit({
         values: fields.reduce((acc, { name, value }) => {
@@ -160,9 +180,14 @@ export function useForm({ name, onSubmit, onValidate }) {
     [submit]
   );
 
+  useEffect(() => {
+    setValues(defaultValues);
+  }, []);
+
   // TODO fieldIds add, remove, swap, removeAtIndex, addAtIndex
 
   return {
+    id: name,
     fields,
     setValues,
     setErrors,
@@ -174,13 +199,21 @@ export function useForm({ name, onSubmit, onValidate }) {
 
 const emptyValidator = (value) => null;
 
+function useValidationResult({ name, formId }) {
+  const result = useRecoilValueLoadable($fieldValidation(`${formId}_${name}`));
+  return result.state === "hasValue" && result.contents[1] !== null;
+}
+
 export function useField({
   name,
   formId,
   defaultValue,
   required,
   validator = emptyValidator,
+  onChange: onChangeCb,
 }) {
+  formId = useContext(FormContext) || formId;
+
   const setFormState = useSetRecoilState($form(formId));
   const [fieldState, setFieldState] = useRecoilState(
     $field(`${formId}_${name}`)
@@ -191,16 +224,26 @@ export function useField({
     setFieldState((state) => ({ ...state, touched: true }));
   }, [setFieldState]);
 
-  const onChange = useCallback(
-    ({ value }) => {
-      setFieldState((state) => ({
-        ...state,
-        touched: true,
-        value,
-        validation: state.validator(value),
-      }));
+  const delayedOnChangeCb = useRef();
+
+  const onChange = useCallback(({ name, value }) => {
+    setFieldState((state) => ({
+      ...state,
+      touched: true,
+      value,
+      validation: state.validator(value),
+    }));
+    delayedOnChangeCb.current = { name, value };
+  }, []);
+
+  useSafeEffect(
+    (safetyGuard) => {
+      if (delayedOnChangeCb.current) {
+        onChangeCb && onChangeCb(safetyGuard, delayedOnChangeCb.current);
+        delayedOnChangeCb.current = undefined;
+      }
     },
-    [setFieldState]
+    [delayedOnChangeCb.current]
   );
 
   useEffect(() => {
@@ -240,17 +283,13 @@ export function useField({
     });
   }, [required, validator]);
 
-  return { ...fieldState, invalid, onBlur, onChange };
-}
-
-function useValidationResult({ name, formId }) {
-  const result = useRecoilValueLoadable($fieldValidation(`${formId}_${name}`));
-  return result.state === "hasValue" && result.contents[1] !== null;
+  return { ...fieldState, formId, invalid, onBlur, onChange };
 }
 
 export function Field({
   name,
   as: Component,
+  wrapWithFormIdProvider,
   formId,
   defaultValue,
   required,
@@ -259,35 +298,26 @@ export function Field({
   onChange,
   ...other
 }) {
-  // TODO validation to loadable -> draw border around field
   const field = useField({
     name,
     formId,
     defaultValue,
     required,
     validator,
+    onChange,
   });
 
-  useSafeEffect(
-    (safetyGuard) => {
-      onChange &&
-        onChange(safetyGuard, { name: field.name, value: field.value });
-    },
-    [field.value]
-  );
+  const Wrapper = useMemo(() => {
+    return wrapWithFormIdProvider ? FormIdProvider : Fragment;
+  }, [wrapWithFormIdProvider]);
 
   return (
     <div style={field.invalid ? { border: "1px solid red" } : undefined}>
-      <Component
-        {...other}
-        name={name}
-        value={field.value}
-        onBlur={field.onBlur}
-        onChange={field.onChange}
-        required={required}
-      />
+      <Wrapper>
+        <Component {...other} {...field} />
+      </Wrapper>
       <Suspense fallback="validating">
-        <Validation name={name} formId={formId} />
+        <Validation name={name} />
       </Suspense>
     </div>
   );
@@ -339,15 +369,14 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
     [name, onChange, propagateErrorToOuterForm, notReadyYet]
   );
 
-  const formId = "configurator";
-  const { submit, handleSubmit, setValues } = useForm({
+  const { id, submit, handleSubmit, setValues } = useForm({
     defaultValues: value,
-    name: formId,
     onSubmit,
   });
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
+      console.log("fetchData", values);
       propagateErrorToOuterForm(notReadyYet);
       setLoading(true);
       await delay(3000);
@@ -379,15 +408,16 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
   );
 
   const onChangeCb = useRecoilCallback(
-    async ({ getPromise }, safetyGuard, { name }) => {
+    async ({ getPromise }, safetyGuard, { name, value }) => {
+      console.log("onChange", name, value);
       const input = inputs.find((input) => input.name === name);
       const isAutoRefreshDisabled =
         input.parameterConfig && input.parameterConfig.noRefresh === true;
 
       if (isAutoRefreshDisabled) submit();
-      else fetchData(safetyGuard, await getPromise($values(formId)));
+      else fetchData(safetyGuard, await getPromise($values(id)));
     },
-    [formId, submit, inputs]
+    [id, submit, inputs]
   );
 
   const requiredRule = useCallback((value) => (value ? null : "required"), []);
@@ -398,14 +428,12 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
   }, []);
 
   return (
-    // TODO Form that handleSubmit on its own
     <form onSubmit={handleSubmit}>
       {inputs.map(({ name }) => (
         <FieldMemo
           key={name}
           as={Input}
           name={name}
-          formId={formId}
           onChange={onChangeCb}
           required
           validator={requiredRule}
@@ -423,10 +451,7 @@ function SomeForm() {
     await delay(2000);
   }, []);
 
-  const formId = "foo";
-
   const { isSubmitting, handleSubmit, setErrors } = useForm({
-    name: formId,
     onSubmit,
   });
 
@@ -441,29 +466,28 @@ function SomeForm() {
         <FieldMemo
           as={Select}
           name="variant"
-          formId={formId}
+          // formId={formId}
           defaultValue="b"
         />
-        <FieldMemo as={Select} name="x" formId={formId} defaultValue="b" />
+        <FieldMemo as={Select} name="x" defaultValue="b" />
         <FieldMemo
           as={Input}
           name="y"
-          formId={formId}
           defaultValue=""
           required
           validator={validator}
         />
         <FieldMemo
           as={Configurator}
+          wrapWithFormIdProvider
           name="config"
-          formId={formId}
           propagateErrorToOuterForm={setErrors}
         />
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? "submitting" : "submit"}
         </button>
         <Suspense fallback="validating form">
-          <FormValidation formId={formId} />
+          <FormValidation />
         </Suspense>
       </form>
     </>
@@ -474,7 +498,9 @@ function App() {
   return (
     <RecoilRoot>
       <div className="App">
-        <SomeForm />
+        <FormIdProvider>
+          <SomeForm />
+        </FormIdProvider>
       </div>
     </RecoilRoot>
   );
