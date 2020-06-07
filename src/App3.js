@@ -54,7 +54,7 @@ export const $field = atomFamily({
       touched: false,
       required: false, // TODO
       validation: validationResult,
-      validator: (value, touched) => validationResult,
+      validator: (value) => validationResult,
     };
   },
 });
@@ -82,12 +82,15 @@ export const $fields = selectorFamily({
   },
 });
 
-// export const $values = selectorFamily({
-//   key: "form_values",
-//   get: (formId) => ({ get }) => {
-//     return get($fields(formId)).map(({ value }) => value);
-//   },
-// });
+export const $values = selectorFamily({
+  key: "form_values",
+  get: (formId) => ({ get }) => {
+    return get($fields(formId)).reduce((acc, { name, value }) => {
+      if (value) acc[name] = value;
+      return acc;
+    }, {});
+  },
+});
 
 export function Validation({ name, formId }) {
   const formIdFromContext = useContext(FormContext);
@@ -149,7 +152,6 @@ export function useForm({
 
   const setValues = useRecoilCallback(
     ({ set }, values, validate) => {
-      console.log("setValues", values);
       Object.keys(values).forEach((id) =>
         set($field(`${formId}_${id}`), (state) => ({
           ...state,
@@ -163,7 +165,6 @@ export function useForm({
 
   const setErrors = useRecoilCallback(
     ({ set }, errors) => {
-      console.log("setErrors", errors);
       Object.keys(errors).forEach((id) =>
         set($field(`${formId}_${id}`), (state) => ({
           ...state,
@@ -199,8 +200,6 @@ export function useForm({
     async ({ getPromise }) => {
       const fields = await getPromise($fields(formId));
       const validationPairs = await getPromise($formValidation(formId));
-
-      console.log(fields);
 
       await onSubmit({
         values: fields.reduce((acc, { name, value }) => {
@@ -290,15 +289,20 @@ export function useField({
 
   const delayOnChange = useCallbackInNextRender();
 
-  const onChange = useCallback(({ name, value }) => {
-    setFieldState((state) => ({
-      ...state,
-      touched: true,
-      value,
-      validation: state.validator(value),
-    }));
-    onChangeCb && delayOnChange(onChangeCb, { name, value });
-  }, []);
+  const onChange = useCallback(
+    ({ name, value, error, touched = true }) => {
+      setFieldState((state) => ({
+        ...state,
+        touched,
+        value,
+        validation: error
+          ? Promise.resolve([state.name, error])
+          : state.validator(value),
+      }));
+      onChangeCb && delayOnChange(onChangeCb, { name, value });
+    },
+    [onChangeCb]
+  );
 
   useEffect(() => {
     setFormState((state) => ({
@@ -417,6 +421,11 @@ function Input({ name, value, onChange }) {
   );
 }
 
+const $test = atomFamily({
+  key: "test",
+  default: { a: 0, b: 0 },
+});
+
 function Configurator({
   name,
   defaultValue,
@@ -431,7 +440,6 @@ function Configurator({
     async (bag) => {
       const { values, validation } = bag;
       console.log("submit config", bag, loading.current);
-      onChange({ name, value: values });
       const possiblyNotReadyYet = loading.current
         ? { [name]: "not ready yet" }
         : {};
@@ -443,7 +451,13 @@ function Configurator({
                 ", "
               )} is missing.`,
             };
-      propagateErrorToOuterForm({ ...possiblyNotReadyYet, ...possiblyError });
+      // TODO passing error here is workaround for https://github.com/facebookexperimental/Recoil/issues/279
+      onChange({
+        name,
+        value: values,
+        error: { ...possiblyNotReadyYet, ...possiblyError }[name],
+      });
+      // propagateErrorToOuterForm({ ...possiblyNotReadyYet, ...possiblyError });
     },
     [name, onChange, propagateErrorToOuterForm]
   );
@@ -457,7 +471,7 @@ function Configurator({
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
-      console.log("fetchData", values);
+      // console.log("fetchData", values);
       propagateErrorToOuterForm({ [name]: "not ready yet" });
       loading.current = true;
       await delay(3000);
@@ -482,7 +496,7 @@ function Configurator({
             acc[name] = value;
             return acc;
           }, {});
-          console.log({ values, reducedValues });
+          // console.log({ values, reducedValues });
           loading.current = false;
           setValues(reducedValues, true);
           // TODO ??? is it ok
@@ -507,14 +521,7 @@ function Configurator({
         input.parameterConfig && input.parameterConfig.noRefresh === true;
 
       if (isAutoRefreshDisabled) submit();
-      else
-        fetchData(
-          safetyGuard,
-          (await getPromise($fields(formId))).reduce((acc, { name, value }) => {
-            if (value) acc[name] = value;
-            return acc;
-          }, {})
-        );
+      else fetchData(safetyGuard, await getPromise($values(formId)));
     },
     [formId, submit, inputs]
   );
@@ -522,10 +529,34 @@ function Configurator({
   const requiredRule = useCallback((value) => (value ? null : "required"), []);
 
   useSafeEffect((safetyGuard) => {
-    console.log("on init", defaultValue);
+    // console.log("on init", defaultValue);
     fetchData(safetyGuard, defaultValue);
     submit();
   }, []);
+
+  // TEST
+  // const [x, setX] = useState({ a: 0, b: 0 });
+  // const [y, setY] = useRecoilState($test("xyz"));
+
+  // const setYCB = useRecoilCallback(({ set }, n) => {
+  //   set($test("xyz"), (x) => ({ ...x, c: n }));
+  // }, []);
+
+  // useEffect(() => {
+  //   setX((x) => ({ ...x, a: 1 }));
+  //   setX((x) => ({ ...x, b: 1 }));
+  //   setY((x) => ({ ...x, a: 1 }));
+  //   setY((x) => ({ ...x, b: 1 }));
+  //   setYCB(1);
+  // }, []);
+
+  // useEffect(() => {
+  //   console.log("xxxxxx", x);
+  // }, [x]);
+
+  // useEffect(() => {
+  //   console.log("yyyyyy", y);
+  // }, [y]);
 
   return (
     <form onSubmit={handleSubmit}>
