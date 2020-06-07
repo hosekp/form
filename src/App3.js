@@ -12,15 +12,14 @@ import React, {
 import useSafeEffect from "use-safe-effect-hook";
 import {
   RecoilRoot,
-  atom,
   atomFamily,
-  selector,
   selectorFamily,
   useRecoilState,
   useSetRecoilState,
   useRecoilValue,
   useRecoilCallback,
   waitForAll,
+  useRecoilValueLoadable,
 } from "recoil";
 
 const delay = (t) => new Promise((res) => setTimeout(res, t));
@@ -82,6 +81,22 @@ export const $values = selectorFamily({
   },
 });
 
+export function Validation({ name, formId }) {
+  const [, error] = useRecoilValue($fieldValidation(`${formId}_${name}`));
+  return error ? <span style={{ color: "red" }}>{error}</span> : null;
+}
+
+function FormValidation({ formId }) {
+  const validationPairs = useRecoilValue($formValidation(formId));
+  return (
+    <div>
+      {validationPairs
+        .filter(([, error]) => !!error)
+        .map(([name, error]) => `${name}: ${error}`)}
+    </div>
+  );
+}
+
 export function useForm({ name, onSubmit, onValidate }) {
   const [{ isSubmitting }, setForm] = useRecoilState($form(name));
   const fields = useRecoilValue($fields(name));
@@ -96,15 +111,17 @@ export function useForm({ name, onSubmit, onValidate }) {
     );
   }, []);
 
-  const setErrors = useRecoilCallback(({ set }, errors) => {
-    console.log({ setErrors: errors });
-    Object.keys(errors).forEach((id) =>
-      set($field(`${name}_${id}`), (state) => ({
-        ...state,
-        validation: Promise.resolve([id, errors[id]]),
-      }))
-    );
-  }, [name]);
+  const setErrors = useRecoilCallback(
+    ({ set }, errors) => {
+      Object.keys(errors).forEach((id) =>
+        set($field(`${name}_${id}`), (state) => ({
+          ...state,
+          validation: Promise.resolve([id, errors[id]]),
+        }))
+      );
+    },
+    [name]
+  );
 
   const submit = useRecoilCallback(
     async ({ getPromise }) => {
@@ -168,6 +185,7 @@ export function useField({
   const [fieldState, setFieldState] = useRecoilState(
     $field(`${formId}_${name}`)
   );
+  const invalid = useValidationResult({ name, formId });
 
   const onBlur = useCallback(() => {
     setFieldState((state) => ({ ...state, touched: true }));
@@ -222,24 +240,12 @@ export function useField({
     });
   }, [required, validator]);
 
-  return { ...fieldState, onBlur, onChange };
+  return { ...fieldState, invalid, onBlur, onChange };
 }
 
-export function Validation({ name, formId }) {
-  const [, error] = useRecoilValue($fieldValidation(`${formId}_${name}`));
-  return error ? <span style={{ color: "red" }}>{error}</span> : null;
-}
-
-function FormValidation({ formId }) {
-  const validationPairs = useRecoilValue($formValidation(formId));
-  console.log(validationPairs)
-  return (
-    <div>
-      {validationPairs
-        .filter(([, error]) => !!error)
-        .map(([name, error]) => `${name}: ${error}`)}
-    </div>
-  );
+function useValidationResult({ name, formId }) {
+  const result = useRecoilValueLoadable($fieldValidation(`${formId}_${name}`));
+  return result.state === "hasValue" && result.contents[1] !== null;
 }
 
 export function Field({
@@ -271,7 +277,7 @@ export function Field({
   );
 
   return (
-    <>
+    <div style={field.invalid ? { border: "1px solid red" } : undefined}>
       <Component
         {...other}
         name={name}
@@ -283,7 +289,7 @@ export function Field({
       <Suspense fallback="validating">
         <Validation name={name} formId={formId} />
       </Suspense>
-    </>
+    </div>
   );
 }
 
@@ -314,6 +320,11 @@ function Input({ name, value, onChange }) {
 
 function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
   const [inputs, setInputs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const notReadyYet = useMemo(() => {
+    return loading ? { [name]: "not ready yet" } : {};
+  }, [name, loading]);
 
   const onSubmit = useCallback(
     async ({ values, validation }) => {
@@ -321,11 +332,11 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
       onChange({ name, value: values });
       propagateErrorToOuterForm(
         Object.keys(validation).length === 0
-          ? {}
-          : { [name]: 'Something is wrong :)' }
+          ? notReadyYet
+          : { ...notReadyYet, [name]: "Something is wrong :)" }
       );
     },
-    [name, onChange, propagateErrorToOuterForm]
+    [name, onChange, propagateErrorToOuterForm, notReadyYet]
   );
 
   const formId = "configurator";
@@ -337,6 +348,8 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
+      propagateErrorToOuterForm(notReadyYet);
+      setLoading(true);
       await delay(3000);
       Promise.resolve([
         {
@@ -354,6 +367,7 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
             acc[name] = value;
             return acc;
           }, {});
+          setLoading(false);
           setValues(reducedValues, true);
           submit();
         })
@@ -361,7 +375,7 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
           // ignore invalid effect
         });
     },
-    [submit, setValues]
+    [submit, setValues, propagateErrorToOuterForm, notReadyYet]
   );
 
   const onChangeCb = useRecoilCallback(
@@ -417,7 +431,7 @@ function SomeForm() {
   });
 
   const validator = useCallback(async (value) => {
-    await delay(3000);
+    await delay(1000);
     return value === "foo" ? "bar" : null;
   }, []);
 
