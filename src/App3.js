@@ -82,21 +82,23 @@ export const $fields = selectorFamily({
   },
 });
 
-export const $values = selectorFamily({
-  key: "form_values",
-  get: (formId) => ({ get }) => {
-    return get($fields(formId)).map(({ value }) => value);
-  },
-});
+// export const $values = selectorFamily({
+//   key: "form_values",
+//   get: (formId) => ({ get }) => {
+//     return get($fields(formId)).map(({ value }) => value);
+//   },
+// });
 
 export function Validation({ name, formId }) {
-  formId = useContext(FormContext) || formId;
+  const formIdFromContext = useContext(FormContext);
+  formId = formId || formIdFromContext;
   const [, error] = useRecoilValue($fieldValidation(`${formId}_${name}`));
   return error ? <span style={{ color: "red" }}>{error}</span> : null;
 }
 
 export function FormValidation({ formId }) {
-  formId = useContext(FormContext) || formId;
+  const formIdFromContext = useContext(FormContext);
+  formId = formId || formIdFromContext;
   const validationPairs = useRecoilValue($formValidation(formId));
   return (
     <div>
@@ -114,72 +116,91 @@ export function FormIdProvider({ children }) {
   return <FormContext.Provider value={formId}>{children}</FormContext.Provider>;
 }
 
+export function useCallbackInNextRender() {
+  const [cb, setCb] = useState(null);
+
+  useSafeEffect(
+    (safetyGuard) => {
+      if (!cb) return;
+      const [callback, args] = cb;
+      callback(safetyGuard, ...args);
+      // setCb(null);
+    },
+    [cb]
+  );
+
+  return useCallback((callback, ...args) => {
+    setCb([callback, args]);
+  }, []);
+}
+
 export function useForm({
-  name,
+  formId,
   onSubmit,
   defaultValues = {},
   resetOnUnmount = true,
 }) {
-  name = useContext(FormContext) || name;
+  const formIdFromContext = useContext(FormContext);
+  formId = formId || formIdFromContext;
 
-  const setForm = useSetRecoilState($form(name));
-  const isSubmitting = useRecoilValueLoadable($formSubmission(name));
-  const fields = useRecoilValue($fields(name));
-
-  console.log('isSubmitting', isSubmitting.state)
+  const setForm = useSetRecoilState($form(formId));
+  const isSubmitting = useRecoilValueLoadable($formSubmission(formId));
+  const fields = useRecoilValue($fields(formId));
 
   const setValues = useRecoilCallback(
     ({ set }, values, validate) => {
+      console.log("setValues", values);
       Object.keys(values).forEach((id) =>
-        set($field(`${name}_${id}`), (state) => ({
+        set($field(`${formId}_${id}`), (state) => ({
           ...state,
           value: values[id],
           validation: validate ? state.validator(values[id]) : state.validation,
         }))
       );
     },
-    [name]
+    [formId]
   );
 
   const setErrors = useRecoilCallback(
     ({ set }, errors) => {
+      console.log("setErrors", errors);
       Object.keys(errors).forEach((id) =>
-        set($field(`${name}_${id}`), (state) => ({
+        set($field(`${formId}_${id}`), (state) => ({
           ...state,
           validation: Promise.resolve([id, errors[id]]),
         }))
       );
     },
-    [name]
+    [formId]
   );
 
   const setTouched = useRecoilCallback(
     ({ set }, touched) => {
       Object.keys(touched).forEach((id) =>
-        set($field(`${name}_${id}`), (state) => ({
+        set($field(`${formId}_${id}`), (state) => ({
           ...state,
           touched: touched[id],
         }))
       );
     },
-    [name]
+    [formId]
   );
 
   const reset = useRecoilCallback(
     async ({ reset, getPromise, set }) => {
-      const { fieldIds } = await getPromise($form(name));
-      reset($form(name));
-      fieldIds.forEach((id) => set($field(`${name}_${id}`, () => undefined)));
+      const { fieldIds } = await getPromise($form(formId));
+      reset($form(formId));
+      fieldIds.forEach((id) => set($field(`${formId}_${id}`, () => undefined)));
     },
-    [name]
+    [formId]
   );
 
   const submit = useRecoilCallback(
     async ({ getPromise }) => {
-      // setForm((state) => ({ ...state, isSubmitting: true }));
+      const fields = await getPromise($fields(formId));
+      const validationPairs = await getPromise($formValidation(formId));
 
-      const fields = await getPromise($fields(name));
-      const validationPairs = await getPromise($formValidation(name));
+      console.log(fields);
 
       await onSubmit({
         values: fields.reduce((acc, { name, value }) => {
@@ -200,24 +221,22 @@ export function useForm({
         }, {}),
         reset,
       });
-
-      // setForm((state) => ({ ...state, isSubmitting: false }));
     },
-    [name, onSubmit, setValues, setErrors, setTouched, reset]
+    [formId, onSubmit, setValues, setErrors, setTouched, reset]
   );
 
-  const $submit = useCallback(() => {
-    const promise = submit();
-    setForm((state) => ({ ...state, submission: promise }));
-    return promise;
+  const createSubmitPromise = useCallback(() => {
+    const submission = submit();
+    setForm((state) => ({ ...state, submission }));
+    return submission;
   }, [submit]);
 
   const handleSubmit = useCallback(
     (event) => {
       event.preventDefault();
-      $submit();
+      createSubmitPromise();
     },
-    [$submit]
+    [createSubmitPromise]
   );
 
   useEffect(() => {
@@ -230,12 +249,12 @@ export function useForm({
   // TODO fieldIds add, remove, swap, removeAtIndex, addAtIndex
 
   return {
-    id: name,
+    formId,
     fields,
     setValues,
     setErrors,
     isSubmitting: isSubmitting.state === "loading",
-    submit: $submit,
+    submit: createSubmitPromise,
     handleSubmit,
     reset,
   };
@@ -256,7 +275,8 @@ export function useField({
   validator = emptyValidator,
   onChange: onChangeCb,
 }) {
-  formId = useContext(FormContext) || formId;
+  let formIdFromContext = useContext(FormContext);
+  formId = formId || formIdFromContext;
 
   const setFormState = useSetRecoilState($form(formId));
   const [fieldState, setFieldState] = useRecoilState(
@@ -268,7 +288,7 @@ export function useField({
     setFieldState((state) => ({ ...state, touched: true }));
   }, [setFieldState]);
 
-  const delayedOnChangeCb = useRef();
+  const delayOnChange = useCallbackInNextRender();
 
   const onChange = useCallback(({ name, value }) => {
     setFieldState((state) => ({
@@ -277,20 +297,8 @@ export function useField({
       value,
       validation: state.validator(value),
     }));
-    delayedOnChangeCb.current = { name, value };
+    onChangeCb && delayOnChange(onChangeCb, { name, value });
   }, []);
-
-  // TODO
-  // use this "delayed" approach or use await delay(5) inside onChange, setValues, etc.?
-  useSafeEffect(
-    (safetyGuard) => {
-      if (delayedOnChangeCb.current) {
-        onChangeCb && onChangeCb(safetyGuard, delayedOnChangeCb.current);
-        delayedOnChangeCb.current = undefined;
-      }
-    },
-    [delayedOnChangeCb.current]
-  );
 
   useEffect(() => {
     setFormState((state) => ({
@@ -329,7 +337,7 @@ export function useField({
     });
   }, [required, validator]);
 
-  return { ...fieldState, formId, invalid, onBlur, onChange };
+  return { ...fieldState, defaultValue, formId, invalid, onBlur, onChange };
 }
 
 export function Field({
@@ -409,42 +417,49 @@ function Input({ name, value, onChange }) {
   );
 }
 
-function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
+function Configurator({
+  name,
+  defaultValue,
+  onChange,
+  setOnReady,
+  propagateErrorToOuterForm,
+}) {
   const [inputs, setInputs] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const notReadyYet = useMemo(() => {
-    return loading ? { [name]: "not ready yet" } : {};
-  }, [name, loading]);
+  const loading = useRef(true);
 
   const onSubmit = useCallback(
     async (bag) => {
       const { values, validation } = bag;
-      console.log("submit config", bag);
+      console.log("submit config", bag, loading.current);
       onChange({ name, value: values });
-      propagateErrorToOuterForm(
+      const possiblyNotReadyYet = loading.current
+        ? { [name]: "not ready yet" }
+        : {};
+      const possiblyError =
         Object.keys(validation).length === 0
-          ? notReadyYet
+          ? {}
           : {
-              ...notReadyYet,
               [name]: `Fields ${Object.keys(validation).join(
                 ", "
               )} is missing.`,
-            }
-      );
+            };
+      propagateErrorToOuterForm({ ...possiblyNotReadyYet, ...possiblyError });
     },
-    [name, onChange, propagateErrorToOuterForm, notReadyYet]
+    [name, onChange, propagateErrorToOuterForm]
   );
 
-  const { id, submit, handleSubmit, setValues } = useForm({
-    defaultValues: value,
+  const { formId, submit, handleSubmit, setValues } = useForm({
+    defaultValues: defaultValue,
     onSubmit,
   });
 
+  const setDelayedSubmit = useCallbackInNextRender();
+
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
-      propagateErrorToOuterForm(notReadyYet);
-      setLoading(true);
+      console.log("fetchData", values);
+      propagateErrorToOuterForm({ [name]: "not ready yet" });
+      loading.current = true;
       await delay(3000);
       Promise.resolve([
         {
@@ -467,17 +482,22 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
             acc[name] = value;
             return acc;
           }, {});
-          setLoading(false);
+          console.log({ values, reducedValues });
+          loading.current = false;
           setValues(reducedValues, true);
+          // TODO ??? is it ok
+          setDelayedSubmit(submit);
+          // submit();
         })
-        // TODO
-        .then(() => delay(5))
-        .then(() => submit())
+        // TODO hack to be able to read values from atoms
+        // setValues() -> submit()
+        // .then(() => delay(5))
+        // .then(() => submit())
         .catch(() => {
           // ignore invalid effect
         });
     },
-    [submit, setValues, propagateErrorToOuterForm, notReadyYet]
+    [name, submit, setValues, propagateErrorToOuterForm]
   );
 
   const onChangeCb = useRecoilCallback(
@@ -487,15 +507,23 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
         input.parameterConfig && input.parameterConfig.noRefresh === true;
 
       if (isAutoRefreshDisabled) submit();
-      else fetchData(safetyGuard, await getPromise($values(id)));
+      else
+        fetchData(
+          safetyGuard,
+          (await getPromise($fields(formId))).reduce((acc, { name, value }) => {
+            if (value) acc[name] = value;
+            return acc;
+          }, {})
+        );
     },
-    [id, submit, inputs]
+    [formId, submit, inputs]
   );
 
   const requiredRule = useCallback((value) => (value ? null : "required"), []);
 
   useSafeEffect((safetyGuard) => {
-    fetchData(safetyGuard, value);
+    console.log("on init", defaultValue);
+    fetchData(safetyGuard, defaultValue);
     submit();
   }, []);
 
@@ -556,6 +584,7 @@ function SomeForm() {
           as={Configurator}
           wrapWithFormIdProvider
           name="config"
+          defaultValue={{ firstName: "John" }}
           propagateErrorToOuterForm={setErrors}
         />
         <button type="submit" disabled={isSubmitting}>
