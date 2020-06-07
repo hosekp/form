@@ -38,6 +38,7 @@ export const $field = atomFamily({
   key: "form_field",
   default: (id) => {
     const [formId, name] = id.split("_");
+    const validationResult = Promise.resolve([name, null]);
     return {
       id,
       formId,
@@ -45,7 +46,8 @@ export const $field = atomFamily({
       value: undefined,
       touched: false,
       required: false, // TODO
-      validation: Promise.resolve([name, null]),
+      validation: validationResult,
+      validator: () => validationResult,
     };
   },
 });
@@ -82,24 +84,27 @@ export const $values = selectorFamily({
 
 export function useForm({ name, onSubmit, onValidate }) {
   const [{ isSubmitting }, setForm] = useRecoilState($form(name));
+  const fields = useRecoilValue($fields(name));
 
-  const setValues = useRecoilCallback(({ set }, values) => {
+  const setValues = useRecoilCallback(({ set }, values, validate) => {
     Object.keys(values).forEach((id) =>
       set($field(`${name}_${id}`), (state) => ({
         ...state,
         value: values[id],
+        validation: validate ? state.validator(values[id]) : state.validation,
       }))
     );
   }, []);
 
   const setErrors = useRecoilCallback(({ set }, errors) => {
+    console.log({ setErrors: errors });
     Object.keys(errors).forEach((id) =>
       set($field(`${name}_${id}`), (state) => ({
         ...state,
         validation: Promise.resolve([id, errors[id]]),
       }))
     );
-  }, []);
+  }, [name]);
 
   const submit = useRecoilCallback(
     async ({ getPromise }) => {
@@ -138,7 +143,12 @@ export function useForm({ name, onSubmit, onValidate }) {
     [submit]
   );
 
+  // TODO fieldIds add, remove, swap, removeAtIndex, addAtIndex
+
   return {
+    fields,
+    setValues,
+    setErrors,
     isSubmitting,
     submit,
     handleSubmit,
@@ -198,11 +208,18 @@ export function useField({
   }, []);
 
   useEffect(() => {
-    setFieldState((state) => ({
-      ...state,
-      required, // TODO
-      validator: async (value) => [state.name, await validator(value)],
-    }));
+    setFieldState((state) => {
+      const wrappedValidator = async (value) => [
+        state.name,
+        await validator(value),
+      ];
+      return {
+        ...state,
+        required, // TODO
+        validator: wrappedValidator,
+        validation: wrappedValidator(state.value),
+      };
+    });
   }, [required, validator]);
 
   return { ...fieldState, onBlur, onChange };
@@ -215,6 +232,7 @@ export function Validation({ name, formId }) {
 
 function FormValidation({ formId }) {
   const validationPairs = useRecoilValue($formValidation(formId));
+  console.log(validationPairs)
   return (
     <div>
       {validationPairs
@@ -231,21 +249,35 @@ export function Field({
   defaultValue,
   required,
   validator,
+  onBlur,
+  onChange,
+  ...other
 }) {
-  const { value, onBlur, onChange } = useField({
+  // TODO validation to loadable -> draw border around field
+  const field = useField({
     name,
     formId,
     defaultValue,
     required,
     validator,
   });
+
+  useSafeEffect(
+    (safetyGuard) => {
+      onChange &&
+        onChange(safetyGuard, { name: field.name, value: field.value });
+    },
+    [field.value]
+  );
+
   return (
     <>
       <Component
+        {...other}
         name={name}
-        value={value}
-        onBlur={onBlur}
-        onChange={onChange}
+        value={field.value}
+        onBlur={field.onBlur}
+        onChange={field.onChange}
         required={required}
       />
       <Suspense fallback="validating">
@@ -280,101 +312,93 @@ function Input({ name, value, onChange }) {
   );
 }
 
-function Configurator({ name, value, onChange }) {
+function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
   const [inputs, setInputs] = useState([]);
 
   const onSubmit = useCallback(
-    // TODO
-    // validation is async therefore it's not possible to have result at the same time as values
-    // after onChange (lastEditedField effect)
-    // even onSubmit can't have them, because it's not guarantied that validation is already resolved
-    async (values, bag) => {
-      const { validate, setErrors, errors } = bag;
-      console.log("submit configurator", { values, bag });
-
-      const error =
-        Object.keys(errors).length > 0
-          ? Object.values(errors).join(" | ")
-          : false;
-      setErrors(errors);
-      onChange({
-        name,
-        value: values,
-        error,
-      });
+    async ({ values, validation }) => {
+      console.log("submit config", values, validation);
+      onChange({ name, value: values });
+      propagateErrorToOuterForm(
+        Object.keys(validation).length === 0
+          ? {}
+          : { [name]: 'Something is wrong :)' }
+      );
     },
-    [name, onChange]
+    [name, onChange, propagateErrorToOuterForm]
   );
 
-  const onValidate = useCallback(async ({ values, errors }) => {
-    await delay(1000);
-    const x = {};
-    if (!values.firstName) x.firstName = "First name is missing.";
-    if (!values.lastName) x.lastName = "Last name is missing.";
-    return { ...errors, ...x };
-  }, []);
+  const formId = "configurator";
+  const { submit, handleSubmit, setValues } = useForm({
+    defaultValues: value,
+    name: formId,
+    onSubmit,
+  });
 
-  const { form, values, setValues, lastEditedField, version, submit } = useForm(
-    {
-      onSubmit,
-      onValidate,
-    }
-  );
-
-  const fetchData = useCallback(async (safetyGuard, values) => {
-    Promise.resolve([
-      {
-        name: "firstName",
-        value: values.firstName || "",
-        parameterConfig: { noRefresh: true },
-      },
-      { name: "lastName", value: values.lastName || "Doe" },
-    ])
-      .then(safetyGuard.checkEffectValidity)
-      .then((inputs) => {
-        setInputs(inputs);
-        // values are not from form
-        const reducedValues = inputs.reduce((acc, { name, value }) => {
-          acc[name] = value;
-          return acc;
-        }, {});
-        console.log({ reducedValues });
-        setValues(reducedValues, true);
-        // submit(reducedValues);
-      })
-      .catch(() => {
-        // ignore invalid effect
-      });
-  }, []);
-
-  useSafeEffect(
-    (safetyGuard) => {
-      const { id } = version;
-      if (id === 0) fetchData(safetyGuard, value || {});
-      submit(values);
+  const fetchData = useCallback(
+    async (safetyGuard, values = {}) => {
+      await delay(3000);
+      Promise.resolve([
+        {
+          name: "firstName",
+          value: values.firstName || "",
+          parameterConfig: { noRefresh: true },
+        },
+        { name: "lastName", value: values.lastName || "Doe" },
+      ])
+        .then(safetyGuard.checkEffectValidity)
+        .then((inputs) => {
+          setInputs(inputs);
+          // values are not from form
+          const reducedValues = inputs.reduce((acc, { name, value }) => {
+            acc[name] = value;
+            return acc;
+          }, {});
+          setValues(reducedValues, true);
+          submit();
+        })
+        .catch(() => {
+          // ignore invalid effect
+        });
     },
-    [version]
+    [submit, setValues]
   );
 
-  useSafeEffect(
-    (safetyGuard) => {
-      const { name } = lastEditedField;
-
-      if (!name) return;
-
+  const onChangeCb = useRecoilCallback(
+    async ({ getPromise }, safetyGuard, { name }) => {
       const input = inputs.find((input) => input.name === name);
       const isAutoRefreshDisabled =
         input.parameterConfig && input.parameterConfig.noRefresh === true;
 
-      if (isAutoRefreshDisabled) submit(values);
-      else fetchData(safetyGuard, values);
+      if (isAutoRefreshDisabled) submit();
+      else fetchData(safetyGuard, await getPromise($values(formId)));
     },
-    [lastEditedField]
+    [formId, submit, inputs]
   );
 
-  return inputs.map(({ name, value }) => (
-    <Field key={name} as={Input} name={name} form={form} />
-  ));
+  const requiredRule = useCallback((value) => (value ? null : "required"), []);
+
+  useSafeEffect((safetyGuard) => {
+    fetchData(safetyGuard, value);
+    submit();
+  }, []);
+
+  return (
+    // TODO Form that handleSubmit on its own
+    <form onSubmit={handleSubmit}>
+      {inputs.map(({ name }) => (
+        <FieldMemo
+          key={name}
+          as={Input}
+          name={name}
+          formId={formId}
+          onChange={onChangeCb}
+          required
+          validator={requiredRule}
+        />
+      ))}
+    </form>
+  );
 }
 
 function SomeForm() {
@@ -387,14 +411,14 @@ function SomeForm() {
 
   const formId = "foo";
 
-  const { isSubmitting, handleSubmit } = useForm({
+  const { isSubmitting, handleSubmit, setErrors } = useForm({
     name: formId,
     onSubmit,
   });
 
   const validator = useCallback(async (value) => {
     await delay(3000);
-    return value === "foo" ? ["bar"] : [];
+    return value === "foo" ? "bar" : null;
   }, []);
 
   return (
@@ -415,7 +439,12 @@ function SomeForm() {
           required
           validator={validator}
         />
-        {/* <Field as={Configurator} name="config" form={form} /> */}
+        <FieldMemo
+          as={Configurator}
+          name="config"
+          formId={formId}
+          propagateErrorToOuterForm={setErrors}
+        />
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? "submitting" : "submit"}
         </button>
