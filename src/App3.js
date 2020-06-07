@@ -117,7 +117,6 @@ export function useForm({ name, onSubmit, defaultValues = {} }) {
 
   const setValues = useRecoilCallback(
     ({ set }, values, validate) => {
-      console.log("setValues", values);
       Object.keys(values).forEach((id) =>
         set($field(`${name}_${id}`), (state) => ({
           ...state,
@@ -148,8 +147,6 @@ export function useForm({ name, onSubmit, defaultValues = {} }) {
       const fields = await getPromise($fields(name));
       const validationPairs = await getPromise($formValidation(name));
 
-      console.log(fields);
-
       await onSubmit({
         values: fields.reduce((acc, { name, value }) => {
           if (value) acc[name] = value;
@@ -159,6 +156,7 @@ export function useForm({ name, onSubmit, defaultValues = {} }) {
           acc[name] = touched;
           return acc;
         }, {}),
+        fieldIds: fields.map(({ name }) => name),
         setValues,
         setErrors,
         validation: validationPairs.reduce((acc, [name, error]) => {
@@ -296,6 +294,7 @@ export function Field({
   validator,
   onBlur,
   onChange,
+  label,
   ...other
 }) {
   const field = useField({
@@ -312,13 +311,27 @@ export function Field({
   }, [wrapWithFormIdProvider]);
 
   return (
-    <div style={field.invalid ? { border: "1px solid red" } : undefined}>
+    <div
+      style={
+        field.touched && field.invalid ? { border: "1px solid red" } : undefined
+      }
+    >
       <Wrapper>
+        {label && (
+          <div>
+            <label>
+              {label}
+              {required ? <span style={{ color: "red" }}>*</span> : null}
+            </label>
+          </div>
+        )}
         <Component {...other} {...field} />
       </Wrapper>
-      <Suspense fallback="validating">
-        <Validation name={name} />
-      </Suspense>
+      {field.touched && (
+        <Suspense fallback="validating">
+          <Validation name={name} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -357,13 +370,19 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
   }, [name, loading]);
 
   const onSubmit = useCallback(
-    async ({ values, validation }) => {
-      console.log("submit config", values, validation);
+    async (bag) => {
+      const { values, validation } = bag;
+      console.log("submit config", bag);
       onChange({ name, value: values });
       propagateErrorToOuterForm(
         Object.keys(validation).length === 0
           ? notReadyYet
-          : { ...notReadyYet, [name]: "Something is wrong :)" }
+          : {
+              ...notReadyYet,
+              [name]: `Fields ${Object.keys(validation).join(
+                ", "
+              )} is missing.`,
+            }
       );
     },
     [name, onChange, propagateErrorToOuterForm, notReadyYet]
@@ -376,7 +395,6 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
-      console.log("fetchData", values);
       propagateErrorToOuterForm(notReadyYet);
       setLoading(true);
       await delay(3000);
@@ -385,8 +403,13 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
           name: "firstName",
           value: values.firstName || "",
           parameterConfig: { noRefresh: true },
+          label: "First Name",
         },
-        { name: "lastName", value: values.lastName || "Doe" },
+        {
+          name: "lastName",
+          value: values.lastName || "Doe",
+          label: "Last Name",
+        },
       ])
         .then(safetyGuard.checkEffectValidity)
         .then((inputs) => {
@@ -398,8 +421,10 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
           }, {});
           setLoading(false);
           setValues(reducedValues, true);
-          submit();
         })
+        // TODO
+        .then(() => delay(5))
+        .then(() => submit())
         .catch(() => {
           // ignore invalid effect
         });
@@ -409,7 +434,6 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
 
   const onChangeCb = useRecoilCallback(
     async ({ getPromise }, safetyGuard, { name, value }) => {
-      console.log("onChange", name, value);
       const input = inputs.find((input) => input.name === name);
       const isAutoRefreshDisabled =
         input.parameterConfig && input.parameterConfig.noRefresh === true;
@@ -429,7 +453,7 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
 
   return (
     <form onSubmit={handleSubmit}>
-      {inputs.map(({ name }) => (
+      {inputs.map(({ name, label }) => (
         <FieldMemo
           key={name}
           as={Input}
@@ -437,6 +461,7 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
           onChange={onChangeCb}
           required
           validator={requiredRule}
+          label={label}
         />
       ))}
     </form>
@@ -468,14 +493,16 @@ function SomeForm() {
           name="variant"
           // formId={formId}
           defaultValue="b"
+          label="variant"
         />
-        <FieldMemo as={Select} name="x" defaultValue="b" />
+        <FieldMemo as={Select} name="x" defaultValue="b" label="method" />
         <FieldMemo
           as={Input}
           name="y"
           defaultValue=""
           required
           validator={validator}
+          label="name"
         />
         <FieldMemo
           as={Configurator}
