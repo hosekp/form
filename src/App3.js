@@ -33,7 +33,12 @@ export const nativeOnChangeMapper = ({ name, onChange }) => ({
 
 export const $form = atomFamily({
   key: `form`,
-  default: (id) => ({ id, fieldIds: [], isSubmitting: false }),
+  default: (id) => ({ id, fieldIds: [], submission: Promise.resolve(null) }),
+});
+
+export const $formSubmission = selectorFamily({
+  key: "form_submission",
+  get: (id) => ({ get }) => get($form(id)).submission,
 });
 
 export const $field = atomFamily({
@@ -109,11 +114,19 @@ export function FormIdProvider({ children }) {
   return <FormContext.Provider value={formId}>{children}</FormContext.Provider>;
 }
 
-export function useForm({ name, onSubmit, defaultValues = {} }) {
+export function useForm({
+  name,
+  onSubmit,
+  defaultValues = {},
+  resetOnUnmount = true,
+}) {
   name = useContext(FormContext) || name;
 
-  const [{ isSubmitting }, setForm] = useRecoilState($form(name));
+  const setForm = useSetRecoilState($form(name));
+  const isSubmitting = useRecoilValueLoadable($formSubmission(name));
   const fields = useRecoilValue($fields(name));
+
+  console.log('isSubmitting', isSubmitting.state)
 
   const setValues = useRecoilCallback(
     ({ set }, values, validate) => {
@@ -140,9 +153,30 @@ export function useForm({ name, onSubmit, defaultValues = {} }) {
     [name]
   );
 
+  const setTouched = useRecoilCallback(
+    ({ set }, touched) => {
+      Object.keys(touched).forEach((id) =>
+        set($field(`${name}_${id}`), (state) => ({
+          ...state,
+          touched: touched[id],
+        }))
+      );
+    },
+    [name]
+  );
+
+  const reset = useRecoilCallback(
+    async ({ reset, getPromise, set }) => {
+      const { fieldIds } = await getPromise($form(name));
+      reset($form(name));
+      fieldIds.forEach((id) => set($field(`${name}_${id}`, () => undefined)));
+    },
+    [name]
+  );
+
   const submit = useRecoilCallback(
     async ({ getPromise }) => {
-      setForm((state) => ({ ...state, isSubmitting: true }));
+      // setForm((state) => ({ ...state, isSubmitting: true }));
 
       const fields = await getPromise($fields(name));
       const validationPairs = await getPromise($formValidation(name));
@@ -159,27 +193,38 @@ export function useForm({ name, onSubmit, defaultValues = {} }) {
         fieldIds: fields.map(({ name }) => name),
         setValues,
         setErrors,
+        setTouched,
         validation: validationPairs.reduce((acc, [name, error]) => {
           if (error) acc[name] = error;
           return acc;
         }, {}),
+        reset,
       });
 
-      setForm((state) => ({ ...state, isSubmitting: false }));
+      // setForm((state) => ({ ...state, isSubmitting: false }));
     },
-    [name, onSubmit, setValues, setErrors]
+    [name, onSubmit, setValues, setErrors, setTouched, reset]
   );
+
+  const $submit = useCallback(() => {
+    const promise = submit();
+    setForm((state) => ({ ...state, submission: promise }));
+    return promise;
+  }, [submit]);
 
   const handleSubmit = useCallback(
     (event) => {
       event.preventDefault();
-      submit();
+      $submit();
     },
-    [submit]
+    [$submit]
   );
 
   useEffect(() => {
     setValues(defaultValues);
+    return () => {
+      resetOnUnmount && reset();
+    };
   }, []);
 
   // TODO fieldIds add, remove, swap, removeAtIndex, addAtIndex
@@ -189,9 +234,10 @@ export function useForm({ name, onSubmit, defaultValues = {} }) {
     fields,
     setValues,
     setErrors,
-    isSubmitting,
-    submit,
+    isSubmitting: isSubmitting.state === "loading",
+    submit: $submit,
     handleSubmit,
+    reset,
   };
 }
 
@@ -234,6 +280,8 @@ export function useField({
     delayedOnChangeCb.current = { name, value };
   }, []);
 
+  // TODO
+  // use this "delayed" approach or use await delay(5) inside onChange, setValues, etc.?
   useSafeEffect(
     (safetyGuard) => {
       if (delayedOnChangeCb.current) {
@@ -423,7 +471,7 @@ function Configurator({ name, value, onChange, propagateErrorToOuterForm }) {
           setValues(reducedValues, true);
         })
         // TODO
-        .then(() => delay(5))
+        .then(() => delay(5))
         .then(() => submit())
         .catch(() => {
           // ignore invalid effect
