@@ -148,7 +148,6 @@ export function useForm({
 
   const setForm = useSetRecoilState($form(formId));
   const isSubmitting = useRecoilValueLoadable($formSubmission(formId));
-  const fields = useRecoilValue($fields(formId));
 
   const setValues = useRecoilCallback(
     ({ set }, values, validate) => {
@@ -249,7 +248,6 @@ export function useForm({
 
   return {
     formId,
-    fields,
     setValues,
     setErrors,
     isSubmitting: isSubmitting.state === "loading",
