@@ -309,7 +309,7 @@ export function useField({
 
   const getBag = useRecoilCallback(
     async ({ getPromise }) => {
-      const [values, touched] = Promise.all(
+      const [values, touched] = await Promise.all(
         getPromise($values(formId)),
         getPromise($touched(formId))
       );
