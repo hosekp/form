@@ -2,7 +2,6 @@ import React, {
   useRef,
   useState,
   useCallback,
-  useReducer,
   useMemo,
   useEffect,
   memo,
@@ -290,7 +289,7 @@ function useValidationResult({ name, formId }) {
 export function useField({
   name,
   formId,
-  defaultValue,
+  initialValue,
   required,
   validator = emptyValidator,
   onChange: onChangeCb,
@@ -315,7 +314,7 @@ export function useField({
       );
       delete values[name];
       delete touched[name];
-      return { values, touched };
+      return { values, touched };
     },
     [] // name and formId can not be changed
   );
@@ -359,7 +358,7 @@ export function useField({
   useEffect(() => {
     setFieldState((state) => ({
       ...state,
-      value: state.value || defaultValue,
+      value: state.value || initialValue,
     }));
   }, []);
 
@@ -378,7 +377,7 @@ export function useField({
     });
   }, [required, validator]);
 
-  return { ...fieldState, defaultValue, formId, invalid, onBlur, onChange };
+  return { ...fieldState, initialValue, formId, invalid, onBlur, onChange };
 }
 
 export function Field({
@@ -386,7 +385,7 @@ export function Field({
   as: Component,
   wrapWithFormIdProvider,
   formId,
-  defaultValue,
+  initialValue,
   required,
   validator,
   onBlur,
@@ -397,7 +396,7 @@ export function Field({
   const field = useField({
     name,
     formId,
-    defaultValue,
+    initialValue,
     required,
     validator,
     onChange,
@@ -465,9 +464,10 @@ const $test = atomFamily({
 
 function Configurator({
   name,
-  defaultValue,
+  initialValue,
   onChange,
   setOnReady,
+  outerFormId,
   propagateErrorToOuterForm,
 }) {
   const [inputs, setInputs] = useState([]);
@@ -500,7 +500,7 @@ function Configurator({
   );
 
   const { formId, submit, handleSubmit, setValues } = useForm({
-    initialValues: defaultValue,
+    initialValues: initialValue,
     onSubmit,
   });
 
@@ -508,7 +508,6 @@ function Configurator({
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
-      // console.log("fetchData", values);
       propagateErrorToOuterForm({ [name]: "not ready yet" });
       loading.current = true;
       await delay(3000);
@@ -566,9 +565,8 @@ function Configurator({
   const requiredRule = useCallback((value) => (value ? null : "required"), []);
 
   useSafeEffect((safetyGuard) => {
-    // console.log("on init", defaultValue);
-    fetchData(safetyGuard, defaultValue);
-    submit();
+    fetchData(safetyGuard, initialValue);
+    propagateErrorToOuterForm({ [name]: "not ready yet" });
   }, []);
 
   // TEST
@@ -596,19 +594,19 @@ function Configurator({
   // }, [y]);
 
   return (
-    <form onSubmit={handleSubmit}>
-      {inputs.map(({ name, label }) => (
-        <FieldMemo
-          key={name}
-          as={Input}
-          name={name}
-          onChange={onChangeCb}
-          required
-          validator={requiredRule}
-          label={label}
-        />
-      ))}
-    </form>
+    // <form onSubmit={handleSubmit}>
+    inputs.map(({ name, label }) => (
+      <FieldMemo
+        key={name}
+        as={Input}
+        name={name}
+        onChange={onChangeCb}
+        required
+        validator={requiredRule}
+        label={label}
+      />
+    ))
+    // </form>
   );
 }
 
@@ -620,7 +618,7 @@ function SomeForm() {
     await delay(2000);
   }, []);
 
-  const { isSubmitting, handleSubmit, setErrors } = useForm({
+  const { formId, isSubmitting, handleSubmit, setErrors } = useForm({
     onSubmit,
   });
 
@@ -629,6 +627,8 @@ function SomeForm() {
     return value === "foo" ? "bar" : null;
   }, []);
 
+  const configInititalValue = useMemo(() => ({ firstName: "John" }), []);
+
   return (
     <>
       <form onSubmit={handleSubmit}>
@@ -636,14 +636,14 @@ function SomeForm() {
           as={Select}
           name="variant"
           // formId={formId}
-          defaultValue="b"
+          initialValue="b"
           label="variant"
         />
-        <FieldMemo as={Select} name="x" defaultValue="b" label="method" />
+        <FieldMemo as={Select} name="x" initialValue="b" label="method" />
         <FieldMemo
           as={Input}
           name="y"
-          defaultValue=""
+          initialValue=""
           required
           validator={validator}
           label="name"
@@ -652,7 +652,8 @@ function SomeForm() {
           as={Configurator}
           wrapWithFormIdProvider
           name="config"
-          defaultValue={{ firstName: "John" }}
+          initialValue={configInititalValue}
+          outerFormId={formId}
           propagateErrorToOuterForm={setErrors}
         />
         <button type="submit" disabled={isSubmitting}>
