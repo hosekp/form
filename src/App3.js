@@ -92,6 +92,16 @@ export const $values = selectorFamily({
   },
 });
 
+export const $touched = selectorFamily({
+  key: "form_touched",
+  get: (formId) => ({ get }) => {
+    return get($fields(formId)).reduce((acc, { name, touched }) => {
+      acc[name] = touched;
+      return acc;
+    }, {});
+  },
+});
+
 export function Validation({ name, formId }) {
   const formIdFromContext = useContext(FormContext);
   formId = formId || formIdFromContext;
@@ -137,14 +147,27 @@ export function useCallbackInNextRender() {
   }, []);
 }
 
+function useWarnOnChanged(name, value) {
+  const original = useRef(value);
+
+  useEffect(() => {
+    if (original.current !== value)
+      console.warn(
+        `property ${name} should not be changed from ${original.current} to ${value}`
+      );
+  });
+}
+
 export function useForm({
   formId,
   onSubmit,
-  defaultValues = {},
+  initialValues = {},
   resetOnUnmount = true,
 }) {
   const formIdFromContext = useContext(FormContext);
   formId = formId || formIdFromContext;
+
+  useWarnOnChanged("formId", formId);
 
   const setForm = useSetRecoilState($form(formId));
   const isSubmitting = useRecoilValueLoadable($formSubmission(formId));
@@ -238,7 +261,7 @@ export function useForm({
   );
 
   useEffect(() => {
-    setValues(defaultValues);
+    setValues(initialValues);
     return () => {
       resetOnUnmount && reset();
     };
@@ -275,11 +298,27 @@ export function useField({
   let formIdFromContext = useContext(FormContext);
   formId = formId || formIdFromContext;
 
+  useWarnOnChanged("formId", formId);
+  useWarnOnChanged("name", formId);
+
   const setFormState = useSetRecoilState($form(formId));
   const [fieldState, setFieldState] = useRecoilState(
     $field(`${formId}_${name}`)
   );
   const invalid = useValidationResult({ name, formId });
+
+  const getBag = useRecoilCallback(
+    async ({ getPromise }) => {
+      const [values, touched] = Promise.all(
+        getPromise($values(formId)),
+        getPromise($touched(formId))
+      );
+      delete values[name];
+      delete touched[name];
+      return { values, touched };
+    },
+    [] // name and formId can not be changed
+  );
 
   const onBlur = useCallback(() => {
     setFieldState((state) => ({ ...state, touched: true }));
@@ -295,11 +334,11 @@ export function useField({
         value,
         validation: error
           ? Promise.resolve([state.name, error])
-          : state.validator(value),
+          : state.validator(value, getBag),
       }));
       onChangeCb && delayOnChange(onChangeCb, { name, value });
     },
-    [onChangeCb]
+    [onChangeCb, getBag]
   );
 
   useEffect(() => {
@@ -328,7 +367,7 @@ export function useField({
     setFieldState((state) => {
       const wrappedValidator = async (value) => [
         state.name,
-        await validator(value),
+        await validator(value, getBag),
       ];
       return {
         ...state,
@@ -461,7 +500,7 @@ function Configurator({
   );
 
   const { formId, submit, handleSubmit, setValues } = useForm({
-    defaultValues: defaultValue,
+    initialValues: defaultValue,
     onSubmit,
   });
 
