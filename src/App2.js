@@ -6,8 +6,8 @@ import React, {
   useMemo,
   useEffect,
   memo,
-} from "react";
-import useSafeEffect from "use-safe-effect-hook";
+} from 'react';
+import useSafeEffect from 'use-safe-effect-hook';
 
 const delay = (t) => new Promise((res) => setTimeout(res, t));
 
@@ -30,7 +30,7 @@ const initialState = {
 
 const reducer = (state, action) => {
   switch (action.type) {
-    case "SET_VALUE": {
+    case 'SET_VALUE': {
       const errorsCopy = { ...state.errors };
       if (action.error) errorsCopy[action.name] = action.error;
       else delete errorsCopy[action.name];
@@ -43,12 +43,12 @@ const reducer = (state, action) => {
         lastEditedField: { name: action.name },
       };
     }
-    case "SET_LAST_TOUCHED_FIELD":
+    case 'SET_LAST_TOUCHED_FIELD':
       return {
         ...state,
         lastTouchedField: { name: action.name },
       };
-    case "REGISTER_FIELD":
+    case 'REGISTER_FIELD':
       return {
         ...state,
         values: {
@@ -56,7 +56,7 @@ const reducer = (state, action) => {
           [action.name]: state.values[action.name] || action.value,
         },
       };
-    case "UNREGISTER_FIELD": {
+    case 'UNREGISTER_FIELD': {
       const valuesCopy = { ...state.values };
       const errorsCopy = { ...state.errors };
       delete valuesCopy[action.name];
@@ -67,38 +67,38 @@ const reducer = (state, action) => {
         errors: { ...errorsCopy },
       };
     }
-    case "SET_VALUES":
+    case 'SET_VALUES':
       return {
         ...state,
         values: action.values,
         version: { id: state.version.id + 1, validate: action.validate },
       };
-    case "SET_ERRORS":
+    case 'SET_ERRORS':
       return {
         ...state,
         errors: action.errors,
       };
-    case "SET_ERROR":
+    case 'SET_ERROR':
       return {
         ...state,
         errors: { ...state.errors, [action.name]: action.error },
       };
-    case "SET_IS_SUBMITTING":
+    case 'SET_IS_SUBMITTING':
       return {
         ...state,
         isSubmitting: action.value,
       };
-    case "SET_IS_VALIDATING":
+    case 'SET_IS_VALIDATING':
       return {
         ...state,
         isValidating: action.value,
       };
-    case "RESET":
+    case 'RESET':
       return {
         ...initialState,
         values: action.values,
       };
-    case "SET_VALIDATION":
+    case 'SET_VALIDATION':
       return {
         ...state,
         validation: action.validation,
@@ -134,18 +134,18 @@ export function useForm({
   const isFieldRegistered = (name) => touched.current[name] !== undefined;
 
   const setValues = useCallback(
-    (values, validate) => dispatch({ type: "SET_VALUES", values, validate }),
+    (values, validate) => dispatch({ type: 'SET_VALUES', values, validate }),
     []
   );
 
   const setErrors = useCallback(
-    (errors) => dispatch({ type: "SET_ERRORS", errors }),
+    (errors) => dispatch({ type: 'SET_ERRORS', errors }),
     []
   );
 
   const runValidation = useCallback(
     ({ checkEffectValidity }, name) => {
-      dispatch({ type: "SET_IS_VALIDATING", value: true });
+      dispatch({ type: 'SET_IS_VALIDATING', value: true });
 
       const x = {
         name,
@@ -155,18 +155,18 @@ export function useForm({
         errors: state.errors,
       };
 
-      console.log("runValidation", state.values);
+      console.log('runValidation', state.values);
 
       const validation = onValidate(x)
         // TODO
         // .then(checkEffectValidity)
         .then((errors) => {
-          dispatch({ type: "SET_ERRORS", errors });
-          dispatch({ type: "SET_IS_VALIDATING", value: false });
+          dispatch({ type: 'SET_ERRORS', errors });
+          dispatch({ type: 'SET_IS_VALIDATING', value: false });
           return { ...x, errors };
         });
 
-      dispatch({ type: "SET_VALIDATION", validation });
+      dispatch({ type: 'SET_VALIDATION', validation });
     },
     [state.values, state.errors, onValidate]
   );
@@ -174,32 +174,32 @@ export function useForm({
   const setFieldValue = useCallback((name, value) => {
     if (!isFieldRegistered(name)) return;
     touched.current[name] = true;
-    dispatch({ type: "SET_VALUE", name, value });
+    dispatch({ type: 'SET_VALUE', name, value });
   }, []);
 
   const setFieldError = useCallback((name, error) => {
     if (!isFieldRegistered(name)) return;
-    dispatch({ type: "SET_ERROR", name, error });
+    dispatch({ type: 'SET_ERROR', name, error });
   }, []);
 
   const handleChange = useCallback(({ name, value, error }) => {
-    dispatch({ type: "SET_VALUE", name, value, error });
+    dispatch({ type: 'SET_VALUE', name, value, error });
   }, []);
 
   const handleBlur = useCallback(({ name }) => {
     if (!isFieldRegistered(name)) return;
     touched.current[name] = true;
-    dispatch({ type: "SET_LAST_TOUCHED_FIELD", name });
+    dispatch({ type: 'SET_LAST_TOUCHED_FIELD', name });
   }, []);
 
   const reset = useCallback(() => {
-    dispatch({ type: "RESET", values: defaultValues });
+    dispatch({ type: 'RESET', values: defaultValues });
   }, []);
 
   const submit = useCallback(
     async (values) => {
-      dispatch({ type: "SET_IS_SUBMITTING", value: true });
-      console.log("submit", values);
+      dispatch({ type: 'SET_IS_SUBMITTING', value: true });
+      console.log('submit', values);
       const validationResult = await state.validation;
       const errors = validationResult ? validationResult.errors : {};
       const bag = {
@@ -217,7 +217,7 @@ export function useForm({
       console.log({ validationResult, bag });
 
       await onSubmit(values, bag);
-      dispatch({ type: "SET_IS_SUBMITTING", value: false });
+      dispatch({ type: 'SET_IS_SUBMITTING', value: false });
     },
     [
       onSubmit,
@@ -245,11 +245,11 @@ export function useForm({
     () => ({
       register: (name, defaultValue = undefined) => {
         touched.current[name] = false;
-        dispatch({ type: "REGISTER_FIELD", name, value: defaultValue });
+        dispatch({ type: 'REGISTER_FIELD', name, value: defaultValue });
       },
       deregister: (name) => {
         delete touched.current[name];
-        dispatch({ type: "UNREGISTER_FIELD", name });
+        dispatch({ type: 'UNREGISTER_FIELD', name });
       },
       handleBlur,
       handleChange,
@@ -342,7 +342,7 @@ export function Field({
   // TODO ???
   useEffect(() => {
     if (name !== nameUsedOnMount.current)
-      throw new Error("Name cannot be changed");
+      throw new Error('Name cannot be changed');
   }, [name]);
 
   useEffect(() => {
@@ -410,11 +410,11 @@ function Configurator({ name, value, onChange }) {
     // even onSubmit can't have them, because it's not guarantied that validation is already resolved
     async (values, bag) => {
       const { validate, setErrors, errors } = bag;
-      console.log("submit configurator", { values, bag });
+      console.log('submit configurator', { values, bag });
 
       const error =
         Object.keys(errors).length > 0
-          ? Object.values(errors).join(" | ")
+          ? Object.values(errors).join(' | ')
           : false;
       setErrors(errors);
       onChange({
@@ -429,8 +429,8 @@ function Configurator({ name, value, onChange }) {
   const onValidate = useCallback(async ({ values, errors }) => {
     await delay(1000);
     const x = {};
-    if (!values.firstName) x.firstName = "First name is missing.";
-    if (!values.lastName) x.lastName = "Last name is missing.";
+    if (!values.firstName) x.firstName = 'First name is missing.';
+    if (!values.lastName) x.lastName = 'Last name is missing.';
     return { ...errors, ...x };
   }, []);
 
@@ -444,11 +444,11 @@ function Configurator({ name, value, onChange }) {
   const fetchData = useCallback(async (safetyGuard, values) => {
     Promise.resolve([
       {
-        name: "firstName",
-        value: values.firstName || "",
+        name: 'firstName',
+        value: values.firstName || '',
         parameterConfig: { noRefresh: true },
       },
-      { name: "lastName", value: values.lastName || "Doe" },
+      { name: 'lastName', value: values.lastName || 'Doe' },
     ])
       .then(safetyGuard.checkEffectValidity)
       .then((inputs) => {
@@ -505,7 +505,7 @@ function Form() {
 
   const onValidate = useCallback(async ({ name, values, errors }) => {
     const x = {};
-    if (values.variant === "a") x.variant = "Wrong variant";
+    if (values.variant === 'a') x.variant = 'Wrong variant';
     if (name) await delay(2000);
     return { ...errors, ...x };
   }, []);
@@ -538,7 +538,7 @@ function Form() {
           type="submit"
           disabled={hasErrors || isValidating || isSubmitting}
         >
-          {isValidating ? "validating" : isSubmitting ? "submitting" : "submit"}
+          {isValidating ? 'validating' : isSubmitting ? 'submitting' : 'submit'}
         </button>
       </form>
     </>

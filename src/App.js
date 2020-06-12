@@ -1,5 +1,5 @@
-import React from "react";
-import { useForm, Controller } from "react-hook-form";
+import React from 'react';
+import { useForm, Controller } from 'react-hook-form';
 
 const nativeOnChangeMapper = (onChange) => ({ target: { value } }) =>
   onChange({ value });
@@ -19,9 +19,9 @@ function Configurator({ value, onChange }) {
 
   console.log(errors);
 
-  const onSubmit = (data) => console.log("submit inner", data);
+  const onSubmit = (data) => console.log('submit inner', data);
 
-  return (<input name="name" defaultValue="test" ref={register} />);
+  return <input name="name" defaultValue="test" ref={register} />;
 }
 
 function Form() {
@@ -29,9 +29,9 @@ function Form() {
 
   console.log(errors);
 
-  console.log(watch(['foo', 'variant']))
+  console.log(watch(['foo', 'variant']));
 
-  const onSubmit = (data) => console.log("submit", data);
+  const onSubmit = (data) => console.log('submit', data);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>

@@ -10,8 +10,8 @@ import React, {
   createContext,
   useContext,
   Fragment,
-} from "react";
-import useSafeEffect from "use-safe-effect-hook";
+} from 'react';
+import useSafeEffect from 'use-safe-effect-hook';
 import {
   RecoilRoot,
   atomFamily,
@@ -22,7 +22,7 @@ import {
   useRecoilCallback,
   waitForAll,
   useRecoilValueLoadable,
-} from "recoil";
+} from 'recoil';
 
 const delay = (t) => new Promise((res) => setTimeout(res, t));
 
@@ -36,14 +36,14 @@ export const $form = atomFamily({
 });
 
 export const $formSubmission = selectorFamily({
-  key: "form_submission",
+  key: 'form_submission',
   get: (id) => ({ get }) => get($form(id)).submission,
 });
 
 export const $field = atomFamily({
-  key: "form_field",
+  key: 'form_field',
   default: (id) => {
-    const [formId, name] = id.split("_");
+    const [formId, name] = id.split('_');
     const validationResult = Promise.resolve([name, null]);
     return {
       id,
@@ -59,12 +59,12 @@ export const $field = atomFamily({
 });
 
 export const $fieldValidation = selectorFamily({
-  key: "form_field_validation",
+  key: 'form_field_validation',
   get: (id) => ({ get }) => get($field(id)).validation,
 });
 
 export const $formValidation = selectorFamily({
-  key: "form_validation",
+  key: 'form_validation',
   get: (formId) => ({ get }) => {
     const { fieldIds } = get($form(formId));
     return waitForAll(
@@ -74,7 +74,7 @@ export const $formValidation = selectorFamily({
 });
 
 export const $fields = selectorFamily({
-  key: "form_fields",
+  key: 'form_fields',
   get: (formId) => ({ get }) => {
     const { fieldIds } = get($form(formId));
     return fieldIds.map((id) => get($field(`${formId}_${id}`)));
@@ -82,7 +82,7 @@ export const $fields = selectorFamily({
 });
 
 export const $values = selectorFamily({
-  key: "form_values",
+  key: 'form_values',
   get: (formId) => ({ get }) => {
     return get($fields(formId)).reduce((acc, { name, value }) => {
       if (value) acc[name] = value;
@@ -92,7 +92,7 @@ export const $values = selectorFamily({
 });
 
 export const $touched = selectorFamily({
-  key: "form_touched",
+  key: 'form_touched',
   get: (formId) => ({ get }) => {
     return get($fields(formId)).reduce((acc, { name, touched }) => {
       acc[name] = touched;
@@ -105,7 +105,7 @@ export function Validation({ name, formId }) {
   const formIdFromContext = useContext(FormContext);
   formId = formId || formIdFromContext;
   const [, error] = useRecoilValue($fieldValidation(`${formId}_${name}`));
-  return error ? <span style={{ color: "red" }}>{error}</span> : null;
+  return error ? <span style={{ color: 'red' }}>{error}</span> : null;
 }
 
 export function FormValidation({ formId }) {
@@ -166,7 +166,7 @@ export function useForm({
   const formIdFromContext = useContext(FormContext);
   formId = formId || formIdFromContext;
 
-  useWarnOnChanged("formId", formId);
+  useWarnOnChanged('formId', formId);
 
   const setForm = useSetRecoilState($form(formId));
   const isSubmitting = useRecoilValueLoadable($formSubmission(formId));
@@ -272,7 +272,7 @@ export function useForm({
     formId,
     setValues,
     setErrors,
-    isSubmitting: isSubmitting.state === "loading",
+    isSubmitting: isSubmitting.state === 'loading',
     submit: createSubmitPromise,
     handleSubmit,
     reset,
@@ -283,7 +283,7 @@ const emptyValidator = (value) => null;
 
 function useValidationResult({ name, formId }) {
   const result = useRecoilValueLoadable($fieldValidation(`${formId}_${name}`));
-  return result.state === "hasValue" && result.contents[1] !== null;
+  return result.state === 'hasValue' && result.contents[1] !== null;
 }
 
 export function useField({
@@ -297,8 +297,8 @@ export function useField({
   let formIdFromContext = useContext(FormContext);
   formId = formId || formIdFromContext;
 
-  useWarnOnChanged("formId", formId);
-  useWarnOnChanged("name", formId);
+  useWarnOnChanged('formId', formId);
+  useWarnOnChanged('name', formId);
 
   const setFormState = useSetRecoilState($form(formId));
   const [fieldState, setFieldState] = useRecoilState(
@@ -409,7 +409,7 @@ export function Field({
   return (
     <div
       style={
-        field.touched && field.invalid ? { border: "1px solid red" } : undefined
+        field.touched && field.invalid ? { border: '1px solid red' } : undefined
       }
     >
       <Wrapper>
@@ -417,7 +417,7 @@ export function Field({
           <div>
             <label>
               {label}
-              {required ? <span style={{ color: "red" }}>*</span> : null}
+              {required ? <span style={{ color: 'red' }}>*</span> : null}
             </label>
           </div>
         )}
@@ -458,7 +458,7 @@ function Input({ name, value, onChange }) {
 }
 
 const $test = atomFamily({
-  key: "test",
+  key: 'test',
   default: { a: 0, b: 0 },
 });
 
@@ -476,16 +476,16 @@ function Configurator({
   const onSubmit = useCallback(
     async (bag) => {
       const { values, validation } = bag;
-      console.log("submit config", bag, loading.current);
+      console.log('submit config', bag, loading.current);
       const possiblyNotReadyYet = loading.current
-        ? { [name]: "not ready yet" }
+        ? { [name]: 'not ready yet' }
         : {};
       const possiblyError =
         Object.keys(validation).length === 0
           ? {}
           : {
               [name]: `Fields ${Object.keys(validation).join(
-                ", "
+                ', '
               )} is missing.`,
             };
       // TODO passing error here is workaround for https://github.com/facebookexperimental/Recoil/issues/279
@@ -508,20 +508,20 @@ function Configurator({
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
-      propagateErrorToOuterForm({ [name]: "not ready yet" });
+      propagateErrorToOuterForm({ [name]: 'not ready yet' });
       loading.current = true;
       await delay(3000);
       Promise.resolve([
         {
-          name: "firstName",
-          value: values.firstName || "",
+          name: 'firstName',
+          value: values.firstName || '',
           parameterConfig: { noRefresh: true },
-          label: "First Name",
+          label: 'First Name',
         },
         {
-          name: "lastName",
-          value: values.lastName || "Doe",
-          label: "Last Name",
+          name: 'lastName',
+          value: values.lastName || 'Doe',
+          label: 'Last Name',
         },
       ])
         .then(safetyGuard.checkEffectValidity)
@@ -562,11 +562,11 @@ function Configurator({
     [formId, submit, inputs]
   );
 
-  const requiredRule = useCallback((value) => (value ? null : "required"), []);
+  const requiredRule = useCallback((value) => (value ? null : 'required'), []);
 
   useSafeEffect((safetyGuard) => {
     fetchData(safetyGuard, initialValue);
-    propagateErrorToOuterForm({ [name]: "not ready yet" });
+    propagateErrorToOuterForm({ [name]: 'not ready yet' });
   }, []);
 
   // TEST
@@ -612,9 +612,9 @@ function Configurator({
 
 function SomeForm() {
   const onSubmit = useCallback(async (bag) => {
-    console.log("onSubmit", bag);
-    bag.setValues({ variant: "c" });
-    bag.setErrors({ y: "fuck!" });
+    console.log('onSubmit', bag);
+    bag.setValues({ variant: 'c' });
+    bag.setErrors({ y: 'fuck!' });
     await delay(2000);
   }, []);
 
@@ -624,10 +624,10 @@ function SomeForm() {
 
   const validator = useCallback(async (value) => {
     await delay(1000);
-    return value === "foo" ? "bar" : null;
+    return value === 'foo' ? 'bar' : null;
   }, []);
 
-  const configInititalValue = useMemo(() => ({ firstName: "John" }), []);
+  const configInititalValue = useMemo(() => ({ firstName: 'John' }), []);
 
   return (
     <>
@@ -657,7 +657,7 @@ function SomeForm() {
           propagateErrorToOuterForm={setErrors}
         />
         <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "submitting" : "submit"}
+          {isSubmitting ? 'submitting' : 'submit'}
         </button>
         <Suspense fallback="validating form">
           <FormValidation />
