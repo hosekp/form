@@ -1,15 +1,12 @@
 import React, { memo, Suspense, useContext } from 'react';
-import { useRecoilValue } from 'recoil';
 
 import FormContext from './context';
-import { $fieldValidation } from './selectors';
 import { useField } from './useField';
+import { useValidation } from './useValidation';
 
 function Validation({ name }) {
   const formIdFromContext = useContext(FormContext);
-  const [, error] = useRecoilValue(
-    $fieldValidation(`${formIdFromContext}_${name}`)
-  );
+  const [, error] = useValidation(formIdFromContext, name);
   return error ? <span style={{ color: 'red' }}>{error}</span> : null;
 }
 
