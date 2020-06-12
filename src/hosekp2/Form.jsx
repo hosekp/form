@@ -1,14 +1,14 @@
 import React from 'react';
 
-import { FormProvider } from './FormProvider';
+import { FormIdProvider } from './FormIdProvider';
 
 const Form = (props) => {
-  const { onSubmit, children, form } = props;
+  const { onSubmit, children, formId } = props;
 
   return (
-    <FormProvider form={form}>
+    <FormIdProvider formId={formId}>
       <form onSubmit={onSubmit}>{children}</form>
-    </FormProvider>
+    </FormIdProvider>
   );
 };
 

@@ -6,8 +6,10 @@ import { $fieldValidation } from './selectors';
 import { useField } from './useField';
 
 function Validation({ name }) {
-  const formFromContext = useContext(FormContext);
-  const [, error] = useRecoilValue($fieldValidation(`${formFromContext.formId}_${name}`));
+  const formIdFromContext = useContext(FormContext);
+  const [, error] = useRecoilValue(
+    $fieldValidation(`${formIdFromContext}_${name}`)
+  );
   return error ? <span style={{ color: 'red' }}>{error}</span> : null;
 }
 
@@ -15,7 +17,6 @@ function FieldInner({
   name,
   label,
   as: Component,
-  formId,
   initialValue,
   required,
   validator,
@@ -25,7 +26,6 @@ function FieldInner({
 }) {
   const field = useField({
     name,
-    formId,
     initialValue,
     required,
     validator,
@@ -38,15 +38,15 @@ function FieldInner({
         field.touched && field.invalid ? { border: '1px solid red' } : undefined
       }
     >
-        {label && (
-          <div>
-            <label>
-              {label}
-              {required ? <span style={{ color: 'red' }}>*</span> : null}
-            </label>
-          </div>
-        )}
-        <Component {...other} {...field} />
+      {label && (
+        <div>
+          <label>
+            {label}
+            {required ? <span style={{ color: 'red' }}>*</span> : null}
+          </label>
+        </div>
+      )}
+      <Component {...other} {...field} />
       {field.touched && (
         <Suspense fallback="validating">
           <Validation name={name} />

@@ -30,10 +30,7 @@ export const $field = atomFamily({
 
 export const $fieldValidation = selectorFamily({
   key: 'form_field_validation',
-  get: (id) => ({ get }) => {
-    // console.log("$fieldValidation",id,get($field(id)));
-    return get($field(id)).validation;
-  },
+  get: (id) => ({ get }) => get($field(id)).validation,
 });
 
 export const $formValidation = selectorFamily({

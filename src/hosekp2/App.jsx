@@ -6,7 +6,7 @@ import {
 } from 'recoil';
 
 import FormContext from './context';
-import {$field, $formValidation} from './selectors';
+import { $formValidation } from './selectors';
 import { delay } from './utils';
 import { useForm } from './useForm';
 import Field from './Field';
@@ -16,16 +16,24 @@ import { Input, Select } from './Inputs';
 import 'antd/dist/antd.css';
 import Form from './Form';
 
+const selectOptions = [
+  { value: 'a', label: 'A' },
+  { value: 'b', label: 'B' },
+  { value: 'c', label: 'C' },
+];
+
 export function FormValidation() {
-  const formFromContext = useContext(FormContext);
-  const validationPairs = useRecoilValue($formValidation(formFromContext.formId));
-  const config = useRecoilValue($field("AppForm_config"));
-  console.log("App_Config",config);
+  const formId = useContext(FormContext);
+  const validationPairs = useRecoilValue($formValidation(formId));
   return (
     <div>
       {validationPairs
         .filter(([, error]) => !!error)
-        .map(([name, error]) => (<div>{name}: {error}</div>))}
+        .map(([name, error]) => (
+          <div>
+            {name}: {error}
+          </div>
+        ))}
     </div>
   );
 }
@@ -39,10 +47,10 @@ function SomeForm() {
   }, []);
 
   const form = useForm({
-    formId:"AppForm",
+    formId: 'AppForm',
     onSubmit,
   });
-  const { isSubmitting, handleSubmit, setErrors } = form;
+  const { isSubmitting, handleSubmit } = form;
 
   const validator = useCallback(async (value) => {
     await delay(1000);
@@ -53,25 +61,17 @@ function SomeForm() {
 
   return (
     <>
-      <Form onSubmit={handleSubmit} form={form}>
+      <Form onSubmit={handleSubmit} formId={form.formId}>
         <Field
           as={Select}
           name="variant"
-          options={[
-            { value: 'a', label: 'A' },
-            { value: 'b', label: 'B' },
-            { value: 'c', label: 'C' },
-          ]}
+          options={selectOptions}
           initialValue="b"
           label="variant"
         />
         <Field
           as={Select}
-          options={[
-            { value: 'a', label: 'A' },
-            { value: 'b', label: 'B' },
-            { value: 'c', label: 'C' },
-          ]}
+          options={selectOptions}
           name="x"
           initialValue="b"
           label="method"
@@ -88,7 +88,6 @@ function SomeForm() {
           as={Configurator}
           name="config"
           initialValue={configInitialValue}
-          propagateErrorToOuterForm={setErrors}
         />
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'submitting' : 'submit'}

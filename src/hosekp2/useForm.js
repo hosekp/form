@@ -29,27 +29,25 @@ export function useForm({
 
   const setValues = useRecoilCallback(
     ({ set }, values, validate) => {
-      Object.keys(values).forEach((id) =>{
-        console.log("setValue",`${formId}_${id}`,values[id]);
+      Object.keys(values).forEach((id) => {
         return set($field(`${formId}_${id}`), (state) => ({
           ...state,
           value: values[id],
           validation: validate ? state.validator(values[id]) : state.validation,
-        }))}
-      );
+        }));
+      });
     },
     [formId]
   );
 
   const setErrors = useRecoilCallback(
-    ({ set }, errors) => {
-      Object.keys(errors).forEach((id) =>{
-        console.log("setError",`${formId}_${id}`,errors[id]);
-        return set($field(`${formId}_${id}`), (state) => ({
+    ({ set }, errors, targetFormId = formId) => {
+      Object.keys(errors).forEach((id) => {
+        return set($field(`${targetFormId}_${id}`), (state) => ({
           ...state,
           validation: Promise.resolve([id, errors[id]]),
-        }))}
-      );
+        }));
+      });
     },
     [formId]
   );
@@ -68,7 +66,6 @@ export function useForm({
 
   const reset = useRecoilCallback(
     async ({ reset, getPromise, set }) => {
-      console.log("Reset",formId);
       const { fieldIds } = await getPromise($form(formId));
       reset($form(formId));
       fieldIds.forEach((id) => set($field(`${formId}_${id}`, () => undefined)));

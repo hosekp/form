@@ -30,8 +30,7 @@ export function useField({
   validator = emptyValidator,
   onChange: onChangeCb,
 }) {
-  const formFromContext = useContext(FormContext);
-  const formId = formFromContext.formId;
+  const formId = useContext(FormContext);
 
   useWarnOnChanged('formId', formId);
   useWarnOnChanged('name', formId);

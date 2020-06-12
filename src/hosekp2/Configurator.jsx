@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useContext, useRef, useState } from 'react';
 import { useRecoilCallback } from 'recoil';
 import useSafeEffect from 'use-safe-effect-hook';
 
@@ -8,16 +8,13 @@ import { useForm } from './useForm';
 import { useCallbackInNextRender } from './useOtherHooks';
 import { Input } from './Inputs';
 import api from './api';
-import {FormProvider} from "./FormProvider";
+import { FormIdProvider } from './FormIdProvider';
+import FormContext from './context';
 
-function Configurator({
-  name,
-  initialValue,
-  onChange,
-  propagateErrorToOuterForm,
-}) {
+function Configurator({ name, initialValue, onChange }) {
   const [inputs, setInputs] = useState([]);
   const loading = useRef(true);
+  const parentFormId = useContext(FormContext);
 
   const onSubmit = useCallback(
     async (bag) => {
@@ -43,21 +40,27 @@ function Configurator({
       // propagateErrorToOuterForm({ ...possiblyNotReadyYet, ...possiblyError });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [name, onChange, propagateErrorToOuterForm]
+    [name, onChange]
   );
 
   const form = useForm({
-    formId:"configurator", //TODO remove
     initialValues: initialValue,
     onSubmit,
   });
-  const { formId, submit, setValues }=form;
+  const { formId, submit, setValues, setErrors } = form;
+  const propagateErrorToOuterForm = useCallback(
+    (error) => {
+      setErrors({ [name]: error }, parentFormId);
+    },
+    [setErrors, name, parentFormId]
+  );
 
   const setDelayedSubmit = useCallbackInNextRender();
+  const setInitialError = useCallbackInNextRender();
 
   const fetchData = useCallback(
     async (safetyGuard, values = {}) => {
-      propagateErrorToOuterForm({ [name]: 'not ready yet' });
+      propagateErrorToOuterForm('not ready yet');
       loading.current = true;
       api
         .post('anything', { values })
@@ -81,6 +84,7 @@ function Configurator({
         // .then(() => delay(5))
         // .then(() => submit())
         .catch(() => {
+          propagateErrorToOuterForm('Error in Configurator API');
           // ignore invalid effect
         });
     },
@@ -104,11 +108,11 @@ function Configurator({
 
   useSafeEffect((safetyGuard) => {
     fetchData(safetyGuard, initialValue);
-    propagateErrorToOuterForm({ [name]: 'not ready yet' });
+    setInitialError(() => propagateErrorToOuterForm('not ready yet'));
   }, []);
 
   return (
-    <FormProvider form={form}>
+    <FormIdProvider formId={formId}>
       {inputs.map(({ name, label }) => (
         <Field
           key={name}
@@ -120,7 +124,7 @@ function Configurator({
           label={label}
         />
       ))}
-    </FormProvider>
+    </FormIdProvider>
   );
 }
 
